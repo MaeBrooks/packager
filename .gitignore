@@ -1,0 +1,6 @@
+*
+
+!.gitignore
+!packager.h
+!nob.h
+!init.c

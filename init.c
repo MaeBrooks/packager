@@ -4,22 +4,20 @@
 #define OPT "/Users/zoft/opt"
 
 int main(int argc, char** argv) {
-  // NOB_GO_REBUILD_URSELF(argc, argv);
+  Pkg pkg = {0};
+
   SET_PKGS_ROOT(OPT);
 
-  Pkg pkg = {0};
   pkg_define(&pkg, "Raylib", "raylib");
-  // pkg_check(&pkg, CHECK_QUIT, "!", "-d", "raylib");
+  pkg_step(&pkg);
+    step_ignore(&pkg, "test", "-d", "raylib");
+    step_do(&pkg, "git", "clone", "https://github.com/raysan5/raylib.git");
+  pkg_step(&pkg);
+    step_into(&pkg, "raylib/src");
+    step_ignore(&pkg, "test", "-f", "libraylib.a");
+    step_do(&pkg, "make", "PLATFORM=PLATFORM_DESKTOP");
+  pkg_assert(pkg_require(&pkg));
 
-  // TODO: add dep of "git"
-  PkgStep* step = pkg_step(&pkg, "Getting Raylib", "git", "clone", "https://github.com/raysan5/raylib.git");
-
-  step_skip_when(step, "test", "-d", "raylib");
-  assert(pkg_require(&pkg) == true);
-  // pkg_check(&pkg, "test", "-d", OPT "/raylib")
-
-  // Package Raylib
-  // Package Font
   // Package Emacs
   // make -j8 configure="--prefix=/opt/emacs --with-tree-sitter --with-ns CFLAGS='-O0 -g3'"
 

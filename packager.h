@@ -11,9 +11,9 @@
 // PACKAGER_IMPLEMENTATION
 
 typedef struct {
-  char* name;
-  Cmd skip_cmd;
+  char* dir;
   Cmd cmd;
+  Cmd skip_cmd;
 } PkgStep;
 
 typedef struct {
@@ -33,7 +33,6 @@ typedef struct {
 typedef struct {
   char* name;
   char* path;
-  bool stopped;
   PkgDeps deps;
   PkgSteps steps;
 } Pkg;
@@ -41,156 +40,227 @@ typedef struct {
 //  ___            _                   _        _   _
 // |_ _|_ __  _ __| |___ _ __  ___ _ _| |_ __ _| |_(_)___ _ _
 //  | || '  \| '_ \ / -_) '  \/ -_) ' \  _/ _` |  _| / _ \ ' \
-// |___|_|_|_| .__/_\___|_|_|_\___|_||_\__\__,_|\__|_\___/_||_|
+    // |___|_|_|_| .__/_\___|_|_|_\___|_||_\__\__,_|\__|_\___/_||_|
 //           |_|
+
+#define pkg_assert(expr) do { \
+  PkgResult e = expr; \
+  if (e != Success) { \
+  nob_log(ERROR, "%s:%d %s\n", __FILE__, __LINE__, pkg_result_msg(e)); \
+  exit(e); \
+  } \
+  } while (0)
+
 #ifndef PACKAGER_IMPLEMENTATION
-  void pkg_define(Pkg* pkg, char* name, char* relpath);
+  typedef PkgResult int;
   void SET_PKGS_ROOT(const char* name);
-  PkgStep* pkg_step(Pkg* pkg, const char* name, ...);
-  void step_skip_when(PkgStep* step, ...);
-  bool pkg_require(Pkg* pkg);
-  bool pkg_require_deps(PkgDeps* deps);
-  bool pkg_run_steps(Pkg* pkg);
+  // Package
+  void pkg_define(Pkg* pkg, char* name, char* relpath);
+  PkgResult pkg_require(Pkg* pkg);
+  PkgResult pkg_require_deps(PkgDeps* deps);
+  PkgResult pkg_run_steps(Pkg* pkg);
+  // Step
+  void pkg_step(Pkg* pkg);
+  void step_do(Pkg* pkg, ...);
+  void step_ignore(Pkg* pkg, ...);
+  void step_into(Pkg* pkg, char* dir);
+  // Memory Management
   void step_free(PkgStep* step);
   void steps_free(PkgSteps* steps);
+  const char* pkg_result_msg(PkgResult e);
 #else
 #include <stdio.h>
 #include "strings.h"
 #include <sys/stat.h>
 
-  static char* pkgs_root = NULL;
+typedef enum {
+  Success,
+  Failure,
+  Skipped,
+} PkgResult;
 
-  bool pkg_require(Pkg* pkg);
-  bool pkg_require_deps(PkgDeps* deps) {
-    assert(deps);
+static char* SUCCESS_RESULT_MSG = "SUCCESS";
+static char* SKIPPED_RESULT_MSG = "SKIPPED";
+static char* FAILURE_RESULT_MSG = "FAILURE";
+static char* UNKNOWN_RESULT_MSG = "UNKNOWN";
 
-    // TODO: build dep tree!
-    // TODO: check if installed
-    // check that deps are required already, if not require them
-    for (uint i = 0; i < deps->count; ++i) {
-      // checking if its already installed is for silly heads, silly! :3
-      if (!pkg_require(&((Pkg*)deps->items)[i])) return false;
-    }
+#define _is_failure(e) (e != Success)
+#define _unwrap_result(action) do { \
+  e = (action); \
+  if (_is_failure(e)) return e; \
+  } while (0)
 
-    nob_da_free(*deps);
+static char* pkgs_root = NULL;
 
-    return true;
+PkgResult pkg_require(Pkg* pkg);
+PkgResult pkg_require_deps(PkgDeps* deps) {
+  assert(deps);
+  PkgResult e = Success;
+
+  // TODO: build dep tree!
+  // TODO: check if installed
+  // check that deps are required already, if not require them
+  for (uint i = 0; i < deps->count; ++i) {
+    // checking if its already installed is for silly heads, silly! :3
+    _unwrap_result(pkg_require(&((Pkg*)deps->items)[i]));
   }
 
-  void step_free(PkgStep* step) {
-    assert(step);
+  nob_da_free(*deps);
 
-    nob_da_free(step->cmd);
-    nob_da_free(step->skip_cmd);
+  return e;
+}
+
+void step_free(PkgStep* step) {
+  assert(step);
+
+  nob_da_free(step->cmd);
+  nob_da_free(step->skip_cmd);
+}
+
+void steps_free(PkgSteps* steps) {
+  assert(steps);
+
+  for (uint i = 0; i < steps->count; ++i) {
+    step_free(steps->items[i]);
   }
 
-  void steps_free(PkgSteps* steps) {
-    assert(steps);
+  nob_da_free(*steps);
+}
 
-    nob_da_free(*steps);
+PkgResult pkg_run_steps(Pkg* pkg) {
+  assert(pkg);
+
+  uint i = 0;
+  PkgResult e = Success;
+  char* current_dir;
+
+ loop_start:
+  if (i >= pkg->steps.count) goto exit;
+
+  PkgStep* step = pkg->steps.items[i];
+
+  if (step->dir) {
+    current_dir = (char*)nob_get_current_dir_temp();
+    nob_set_current_dir(step->dir);
   }
 
-  bool pkg_run_steps(Pkg* pkg) {
-    assert(pkg);
-
-    for (uint i = 0; i < pkg->steps.count; ++i) {
-      PkgStep* step = pkg->steps.items[i];
-      bool success = nob_cmd_run_sync(step->skip_cmd);
-
-      if (success) goto free;
-      if (step->name) nob_log(INFO, "[STEP] %s\n", step->name);
-
-      success = nob_cmd_run_sync(step->cmd);
-
-    free:
-      step_free(pkg->steps.items[i]);
-
-      if (!success) return false;
-    }
-
-    return true;
+  if (nob_cmd_run_sync(step->skip_cmd)) {
+    e = Skipped;
+    goto loop_end;
   }
 
-  bool pkg_require(Pkg* pkg) {
-    assert(pkg);
-
-    nob_log(INFO, "Building package: [%s]\n", pkg->name);
-
-    if (!pkg_require_deps(&pkg->deps)) return false;
-    if (!pkg_run_steps(pkg)) return false;
-
-    nob_da_free(pkg->steps);
-    free(pkg->path);
-    fprintf(stderr, "%c", '\n');
-
-    return true;
+  if (!nob_cmd_run_sync(step->cmd)) {
+    e = Failure;
+    goto loop_end;
   }
 
-  void pkg_define(Pkg* pkg, const char* name, const char* relpath) {
-    assert(pkg);
-    assert(relpath);
-    assert(pkgs_root);
+ loop_end:
+  if (step->dir) nob_set_current_dir(current_dir);
 
-    unsigned long size = strlen(pkgs_root) + strlen(relpath) + 1;
-    char* path = malloc(size);
-
-    snprintf(path, size, "%s%s", pkgs_root, relpath);
-
-    pkg->name = (char*)name;
-    pkg->path = (char*)path;
+  if (e != Failure) {
+    e = Success;
+    ++i;
+    goto loop_start;
   }
 
-  static bool direxists(const char* path) {
-    struct stat st;
-    bool err = stat(pkgs_root, &st) == -1;
-    if (!err || S_ISDIR(st.st_mode) != 0) {
-      return false;
-    }
+ exit:
+  return e;
+}
 
-    return true;
+PkgResult pkg_require(Pkg* pkg) {
+  assert(pkg);
+  nob_log(INFO, "Building package: [%s]", pkg->name);
+
+  PkgResult e = Success;
+  _unwrap_result(pkg_require_deps(&pkg->deps));
+  _unwrap_result(pkg_run_steps(pkg));
+
+  nob_log(INFO, "[%s]: Required!\n", pkg->name);
+
+  return e;
+}
+
+void pkg_define(Pkg* pkg, const char* name, const char* relpath) {
+  assert(pkg);
+  assert(relpath);
+  assert(pkgs_root);
+
+  unsigned long size = strlen(pkgs_root) + strlen(relpath) + 1;
+  char* path = malloc(size);
+
+  snprintf(path, size, "%s%s", pkgs_root, relpath);
+
+  pkg->name = (char*)name;
+  pkg->path = (char*)path;
+}
+
+static bool direxists(const char* path) {
+  struct stat st;
+  bool err = stat(pkgs_root, &st) == -1;
+  if (!err || S_ISDIR(st.st_mode) != 0) {
+    return false;
   }
 
-  void SET_PKGS_ROOT(const char* root) {
-    assert(root);
+  return true;
+}
 
-    if (!direxists(root)) {
-      nob_log(ERROR, "Unable to find directory: %s\n", root);
-      abort();
-    }
+void SET_PKGS_ROOT(const char* root) {
+  assert(root);
 
-    pkgs_root = (char*)root;
+  if (!direxists(root)) {
+    nob_log(ERROR, "Unable to find directory: %s\n", root);
+    abort();
   }
 
-  static PkgStep* _pkg_step(Pkg* pkg, const char* name, const char* args[], unsigned int args_size) {
-    assert(pkg);
+  pkgs_root = (char*)root;
+}
 
-    PkgStep* step = calloc(1, sizeof(PkgStep));
+void pkg_step(Pkg* pkg) {
+  assert(pkg);
 
-    step->name = (char*)name;
-    da_append_many(&step->cmd, args, args_size);
+  da_append(&pkg->steps, (PkgStep*)calloc(1, sizeof(PkgStep)));
+}
 
-    da_append(&pkg->steps, step);
-
-    return step;
-  }
-
-  static void _step_skip_when(PkgStep* step, const char* args[], unsigned int args_size) {
-    assert(step);
-    assert(step->skip_cmd.count == 0);
-
-    da_append_many(&step->skip_cmd, args, args_size);
-  }
-
-#define pkg_step(pkg, name, ...) \
-  _pkg_step(pkg, name, \
+#define step_do(pkg, ...) \
+    _step_do(pkg, \
   ((const char*[]){__VA_ARGS__}), \
   (sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*)))
+static void _step_do(Pkg* pkg, const char* args[], unsigned int args_size) {
+  assert(pkg);
 
-#define step_skip_when(step, ...) \
-  _step_skip_when(step, \
+  da_append_many(&da_last(&pkg->steps)->cmd, args, args_size);
+}
+
+#define step_ignore(pkg, ...) \
+    _step_ignore(pkg, \
   ((const char*[]){__VA_ARGS__}), \
   (sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*)))
+static void _step_ignore(Pkg* pkg, const char* args[], unsigned int args_size) {
+  assert(pkg);
 
+  da_append_many(&da_last(&pkg->steps)->skip_cmd, args, args_size);
+}
+
+void step_into(Pkg* pkg, char* dir) {
+  assert(pkg);
+  assert(dir);
+
+  PkgStep* step = da_last(&pkg->steps);
+  step->dir = dir;
+}
+
+const char* pkg_result_msg(PkgResult e) {
+  switch (e) {
+  case Success: return SUCCESS_RESULT_MSG;
+  case Skipped: return SKIPPED_RESULT_MSG;
+  case Failure: return FAILURE_RESULT_MSG;
+  default:
+    return UNKNOWN_RESULT_MSG;
+  }
+}
 #endif // PACKAGER_IMPLEMENTATION
+
+#undef _unwrap_result
+#undef _is_failure
 
 #endif // PACKENGER_H
