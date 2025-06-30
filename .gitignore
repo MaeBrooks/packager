@@ -1,6 +1,7 @@
 *
-
+!README.md
+!LICENSE
 !.gitignore
 !packager.h
 !nob.h
-!init.c
+!example.c
