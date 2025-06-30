@@ -21,22 +21,6 @@ int main(int argc, char** argv) {
   // Package Emacs
   // make -j8 configure="--prefix=/opt/emacs --with-tree-sitter --with-ns CFLAGS='-O0 -g3'"
 
-  /*
-    #define OPT "/home/foo/opt"
-    Pkg pkg = {0};
-    pkg_define(&pkg, "Raylib");
-
-    pkg_check(&pkg, "test", "-d", OPT "/raylib");
-
-    pkg_check(&pkg, "!", "test", "-d", "/raylib");
-    pkg_step(&pkg, "git", "clone", "https://github.com/foobar/raylib.git");
-
-    pkg_step()
-
-    pkg_require_and_reset(&pkg);
-    ...
-  */
-
 
   // TODO: Group them into kinds
   // TODO: Break each down into steps
