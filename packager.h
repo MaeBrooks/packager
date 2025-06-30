@@ -37,18 +37,17 @@ typedef struct {
   PkgSteps steps;
 } Pkg;
 
-//  ___            _                   _        _   _
-// |_ _|_ __  _ __| |___ _ __  ___ _ _| |_ __ _| |_(_)___ _ _
-//  | || '  \| '_ \ / -_) '  \/ -_) ' \  _/ _` |  _| / _ \ ' \
-    // |___|_|_|_| .__/_\___|_|_|_\___|_||_\__\__,_|\__|_\___/_||_|
-//           |_|
-
 #define pkg_assert(expr) do { \
   PkgResult e = expr; \
   if (e != Success) { \
   nob_log(ERROR, "%s:%d %s\n", __FILE__, __LINE__, pkg_result_msg(e)); \
   } \
   } while (0)
+
+//  ___       __ _      _ _   _
+// |   \ ___ / _(_)_ _ (_) |_(_)___ _ _
+// | |) / -_)  _| | ' \| |  _| / _ \ ' \
+// |___/\___|_| |_|_||_|_|\__|_\___/_||_|
 
 #ifndef PACKAGER_IMPLEMENTATION
   typedef PkgResult int;
@@ -70,6 +69,13 @@ typedef struct {
   void steps_free(PkgSteps* steps);
   const char* pkg_result_msg(PkgResult e);
 #else
+
+//  ___            _                   _        _   _
+// |_ _|_ __  _ __| |___ _ __  ___ _ _| |_ __ _| |_(_)___ _ _
+//  | || '  \| '_ \ / -_) '  \/ -_) ' \  _/ _` |  _| / _ \ ' \
+// |___|_|_|_| .__/_\___|_|_|_\___|_||_\__\__,_|\__|_\___/_||_|
+//           |_|
+
 #include <stdio.h>
 #include "strings.h"
 #include <sys/stat.h>
