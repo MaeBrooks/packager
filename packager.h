@@ -47,7 +47,6 @@ typedef struct {
   PkgResult e = expr; \
   if (e != Success) { \
   nob_log(ERROR, "%s:%d %s\n", __FILE__, __LINE__, pkg_result_msg(e)); \
-  exit(e); \
   } \
   } while (0)
 
@@ -56,7 +55,9 @@ typedef struct {
   void SET_PKGS_ROOT(const char* name);
   // Package
   void pkg_define(Pkg* pkg, char* name, char* relpath);
+  void pkg_reset(Pkg* pkg);
   PkgResult pkg_require(Pkg* pkg);
+  PkgResult pkg_require_reset(Pkg* pkg);
   PkgResult pkg_require_deps(PkgDeps* deps);
   PkgResult pkg_run_steps(Pkg* pkg);
   // Step
@@ -91,30 +92,14 @@ static char* UNKNOWN_RESULT_MSG = "UNKNOWN";
   } while (0)
 
 static char* pkgs_root = NULL;
-
 PkgResult pkg_require(Pkg* pkg);
-PkgResult pkg_require_deps(PkgDeps* deps) {
-  assert(deps);
-  PkgResult e = Success;
-
-  // TODO: build dep tree!
-  // TODO: check if installed
-  // check that deps are required already, if not require them
-  for (uint i = 0; i < deps->count; ++i) {
-    // checking if its already installed is for silly heads, silly! :3
-    _unwrap_result(pkg_require(&((Pkg*)deps->items)[i]));
-  }
-
-  nob_da_free(*deps);
-
-  return e;
-}
+void pkg_reset(Pkg* pkg);
 
 void step_free(PkgStep* step) {
   assert(step);
 
-  nob_da_free(step->cmd);
-  nob_da_free(step->skip_cmd);
+  step->cmd.count = 0;
+  step->skip_cmd.count = 0;
 }
 
 void steps_free(PkgSteps* steps) {
@@ -124,7 +109,44 @@ void steps_free(PkgSteps* steps) {
     step_free(steps->items[i]);
   }
 
-  nob_da_free(*steps);
+  steps->count = 0;
+}
+
+void deps_free(PkgDeps* deps) {
+  for (uint i = 0; i < deps->count; ++i) {
+    pkg_reset((Pkg*)deps->items[i]);
+  }
+
+  deps->count = 0;
+}
+
+void pkg_reset(Pkg* pkg) {
+  assert(pkg);
+
+  free(pkg->path);
+  steps_free(&pkg->steps);
+  deps_free(&pkg->deps);
+}
+
+PkgResult pkg_require_deps(PkgDeps* deps) {
+  assert(deps);
+  PkgResult e = Success;
+
+  // TODO: build dep tree!
+  // TODO: check if installed ?
+  // check that deps are required already, if not require them
+  for (uint i = 0; i < deps->count; ++i) {
+    // checking if its already installed is for silly heads, silly! :3
+    _unwrap_result(pkg_require(&((Pkg*)deps->items)[i]));
+  }
+
+  return e;
+}
+
+PkgResult pkg_require_reset(Pkg* pkg) {
+  PkgResult e = pkg_require(pkg);
+  pkg_reset(pkg);
+  return e;
 }
 
 PkgResult pkg_run_steps(Pkg* pkg) {
@@ -134,6 +156,8 @@ PkgResult pkg_run_steps(Pkg* pkg) {
   PkgResult e = Success;
   char* current_dir;
 
+  // TODO: pkgs should be installed in a INSTALL_DIR/<pkg-name>
+  // TODO: pkgs may need to be added to PATHS and stuff, we should also handle that?
  loop_start:
   if (i >= pkg->steps.count) goto exit;
 
@@ -218,6 +242,7 @@ void SET_PKGS_ROOT(const char* root) {
 void pkg_step(Pkg* pkg) {
   assert(pkg);
 
+  nob_log(INFO, "Package step: %ld", pkg->steps.count);
   da_append(&pkg->steps, (PkgStep*)calloc(1, sizeof(PkgStep)));
 }
 

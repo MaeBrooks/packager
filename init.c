@@ -16,20 +16,19 @@ int main(int argc, char** argv) {
     step_into(&pkg, "raylib/src");
     step_ignore(&pkg, "test", "-f", "libraylib.a");
     step_do(&pkg, "make", "PLATFORM=PLATFORM_DESKTOP");
-  pkg_assert(pkg_require(&pkg));
+  pkg_assert(pkg_require_reset(&pkg));
 
-  // Package Emacs
-  // make -j8 configure="--prefix=/opt/emacs --with-tree-sitter --with-ns CFLAGS='-O0 -g3'"
+  pkg_define(&pkg, "Emacs", "emacs");
+  pkg_step(&pkg);
+    step_ignore(&pkg, "test", "-d", "emacs");
+    step_do(&pkg, "git", "clone", "https://github.com/emacs-mirror/emacs.git");
+  pkg_step(&pkg);
+    step_into(&pkg, "emacs");
+    step_ignore(&pkg, "test", "-f", "src/emacs");
+    step_do(&pkg, "make", "-j8",
+          "configure=\"--prefix=/opt/emacs --with-tree-sitter --with-ns CFLAGS='-O0 -g3'\"");
 
-
-  // TODO: Group them into kinds
-  // TODO: Break each down into steps
-  // TODO: figure out how to define this!
-  // TODO: Can I group the packages dependencies into a dependency tree? and if so, how can i group those together?
-  // TODO: also, how can i handle paths? should i put everything into a ./opt/ folder and let the user deal with paths?
-  // TODO: what if the packages require the path for an item to be available? can i alter the path env in the program
-  //       execute it that way?
-  // TODO: How do i check if something is already installed?
+  pkg_assert(pkg_require_reset(&pkg));
 
   return 0;
 }
