@@ -80,6 +80,16 @@ typedef struct {
 #include "strings.h"
 #include <sys/stat.h>
 
+static bool direxists(const char* path) {
+  struct stat st;
+  bool err = stat(path, &st) == -1;
+  if (err || (S_ISDIR(st.st_mode) != 1)) {
+    return false;
+  }
+
+  return true;
+}
+
 typedef enum {
   Success,
   Failure,
@@ -162,6 +172,17 @@ PkgResult pkg_run_steps(Pkg* pkg) {
   PkgResult e = Success;
   char* current_dir;
 
+  if (!direxists(pkg->path)) {
+    Nob_Cmd cmd = {0};
+    nob_cmd_append(&cmd, "mkdir", "-p", pkg->path);
+    if (!nob_cmd_run_sync(cmd)) {
+      nob_log(ERROR, "Unable to build package, failed to create root dir");
+      return Failure;
+    }
+
+    nob_set_current_dir(pkg->path);
+  }
+
   // TODO: pkgs should be installed in a INSTALL_DIR/<pkg-name>
   // TODO: pkgs may need to be added to PATHS and stuff, we should also handle that?
  loop_start:
@@ -215,23 +236,13 @@ void pkg_define(Pkg* pkg, const char* name, const char* relpath) {
   assert(relpath);
   assert(pkgs_root);
 
-  unsigned long size = strlen(pkgs_root) + strlen(relpath) + 1;
+  unsigned long size = strlen(pkgs_root) + strlen(relpath) + 2;
   char* path = malloc(size);
 
-  snprintf(path, size, "%s%s", pkgs_root, relpath);
+  snprintf(path, size, "%s/%s", pkgs_root, relpath);
 
   pkg->name = (char*)name;
   pkg->path = (char*)path;
-}
-
-static bool direxists(const char* path) {
-  struct stat st;
-  bool err = stat(pkgs_root, &st) == -1;
-  if (!err || S_ISDIR(st.st_mode) != 0) {
-    return false;
-  }
-
-  return true;
 }
 
 void SET_PKGS_ROOT(const char* root) {

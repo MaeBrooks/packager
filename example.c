@@ -18,6 +18,7 @@ int main(int argc, char** argv) {
     step_do(&pkg, "make", "PLATFORM=PLATFORM_DESKTOP");
   pkg_assert(pkg_require_reset(&pkg));
 
+#define EMACS_INSTALL_DEST OPT "/emacs/dist"
   pkg_define(&pkg, "Emacs", "emacs");
   pkg_step(&pkg);
     step_ignore(&pkg, "test", "-d", "emacs");
@@ -26,8 +27,7 @@ int main(int argc, char** argv) {
     step_into(&pkg, "emacs");
     step_ignore(&pkg, "test", "-f", "src/emacs");
     step_do(&pkg, "make", "-j8",
-          "configure=\"--prefix=/opt/emacs --with-tree-sitter --with-ns CFLAGS='-O0 -g3'\"");
-
+          "configure=\"--prefix=" EMACS_INSTALL_DEST " --with-tree-sitter --with-ns\"");
   pkg_assert(pkg_require_reset(&pkg));
 
   return 0;
